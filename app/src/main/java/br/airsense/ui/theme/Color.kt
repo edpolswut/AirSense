@@ -1,4 +1,4 @@
-package com.example.airsense.ui.theme
+package br.airsense.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

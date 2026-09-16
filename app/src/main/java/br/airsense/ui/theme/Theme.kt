@@ -1,6 +1,5 @@
-package com.example.airsense.ui.theme
+package br.airsense.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
