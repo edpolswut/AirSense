@@ -2,18 +2,19 @@ package br.airsense.data.local
 
 import androidx.room.*
 import br.airsense.model.AirSenseDevice
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AirSenseDeviceDao {
-    @Insert
-    suspend fun inserir(tarefa: AirSenseDevice)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun inserir(device: AirSenseDevice)
 
-    @Query("SELECT * FROM device ORDER BY id DESC")
-    suspend fun listar(): List<AirSenseDevice>
+    @Query("SELECT * FROM device ORDER BY id ASC")
+    fun listar(): Flow<List<AirSenseDevice>>
 
     @Update
-    suspend fun atualizar(tarefa: AirSenseDevice)
+    suspend fun atualizar(device: AirSenseDevice)
 
     @Delete
-    suspend fun excluir(tarefa: AirSenseDevice)
+    suspend fun excluir(device: AirSenseDevice)
 }
