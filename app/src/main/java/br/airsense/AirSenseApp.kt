@@ -159,7 +159,7 @@ fun AirSenseApp(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        label = { Text("Home") }
+                        //label = { Text("Home") }
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "AirSenseDevices",
@@ -171,7 +171,7 @@ fun AirSenseApp(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        label = { Text("Dispositivos") }
+                        //label = { Text("Dispositivos") }
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "Environment",
@@ -183,7 +183,7 @@ fun AirSenseApp(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        label = { Text("Ambientes") }
+                        //label = { Text("Ambientes") }
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "Report",
@@ -195,7 +195,7 @@ fun AirSenseApp(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        label = { Text("Relatório") }
+                        //label = { Text("Relatório") }
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "User",
@@ -207,7 +207,7 @@ fun AirSenseApp(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         },
-                        label = { Text("Usuário") }
+                        //label = { Text("Usuário") }
                     )
                 }
             }
