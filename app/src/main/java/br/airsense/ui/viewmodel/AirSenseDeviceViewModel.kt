@@ -1,11 +1,12 @@
 package br.airsense.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import br.airsense.data.repository.AirSenseDeviceRepository
 import br.airsense.model.AirSenseDevice
 import br.airsense.model.DeviceStatus
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import javax.inject.Inject
 
 enum class SortOption(val label: String) {
     REGISTRATION_ORDER("Ordem de Cadastro"),
@@ -26,18 +28,35 @@ data class FormState(
     val name: String = "",
     val deviceId: String = "",
     val status: DeviceStatus = DeviceStatus.ACTIVE,
-    val tempRange: ClosedFloatingPointRange<Float> = 18.0f..26.0f,
-    val humidityRange: ClosedFloatingPointRange<Float> = 30.0f..60.0f,
-    val airQualityRange: ClosedFloatingPointRange<Float> = 0.0f..100.0f,
-    val co2Range: ClosedFloatingPointRange<Float> = 400.0f..1000.0f
-)
+    val tempRange: ClosedFloatingPointRange<Float> = DEFAULT_TEMP_RANGE,
+    val humidityRange: ClosedFloatingPointRange<Float> = DEFAULT_HUMIDITY_RANGE,
+    val airQualityRange: ClosedFloatingPointRange<Float> = DEFAULT_AIR_QUALITY_RANGE,
+    val co2Range: ClosedFloatingPointRange<Float> = DEFAULT_CO2_RANGE
+) {
+    companion object {
+        val DEFAULT_TEMP_RANGE = 18.0f..26.0f
+        val DEFAULT_HUMIDITY_RANGE = 30.0f..60.0f
+        val DEFAULT_AIR_QUALITY_RANGE = 0.0f..100.0f
+        val DEFAULT_CO2_RANGE = 400.0f..1000.0f
 
-private data class PopupAndFormState(
-    val isAddOptionsModalOpen: Boolean,
-    val isFullScreenPopupOpen: Boolean,
-    val deviceBeingEdited: AirSenseDevice?,
-    val form: FormState,
-    val toast: String?
+        fun default(randomDeviceId: String = ""): FormState = FormState(
+            name = "",
+            deviceId = randomDeviceId,
+            status = DeviceStatus.ACTIVE,
+            tempRange = DEFAULT_TEMP_RANGE,
+            humidityRange = DEFAULT_HUMIDITY_RANGE,
+            airQualityRange = DEFAULT_AIR_QUALITY_RANGE,
+            co2Range = DEFAULT_CO2_RANGE
+        )
+    }
+}
+
+data class UiOverlayState(
+    val isAddOptionsModalOpen: Boolean = false,
+    val isFullScreenPopupOpen: Boolean = false,
+    val deviceBeingEdited: AirSenseDevice? = null,
+    val form: FormState = FormState(),
+    val toastMessage: String? = null
 )
 
 data class AirSenseDeviceUiState(
@@ -47,77 +66,55 @@ data class AirSenseDeviceUiState(
     val isAddOptionsModalOpen: Boolean = false,
     val isFullScreenPopupOpen: Boolean = false,
     val deviceBeingEdited: AirSenseDevice? = null,
-
-    val formName: String = "",
-    val formDeviceId: String = "",
-    val formStatus: DeviceStatus = DeviceStatus.ACTIVE,
-    val formTempRange: ClosedFloatingPointRange<Float> = 18.0f..26.0f,
-    val formHumidityRange: ClosedFloatingPointRange<Float> = 30.0f..60.0f,
-    val formAirQualityRange: ClosedFloatingPointRange<Float> = 0.0f..100.0f,
-    val formCo2Range: ClosedFloatingPointRange<Float> = 400.0f..1000.0f,
-
+    val form: FormState = FormState(),
     val toastMessage: String? = null
 )
 
-class AirSenseDeviceViewModel(
+@HiltViewModel
+class AirSenseDeviceViewModel @Inject constructor(
     private val repository: AirSenseDeviceRepository
 ) : ViewModel() {
 
     private val _statusFilter = MutableStateFlow<DeviceStatus?>(null)
     private val _sortOption = MutableStateFlow(SortOption.REGISTRATION_ORDER)
-    private val _isAddOptionsModalOpen = MutableStateFlow(false)
-    private val _isFullScreenPopupOpen = MutableStateFlow(false)
-    private val _deviceBeingEdited = MutableStateFlow<AirSenseDevice?>(null)
-    private val _formState = MutableStateFlow(FormState())
-    private val _toastMessage = MutableStateFlow<String?>(null)
+    private val _overlayState = MutableStateFlow(UiOverlayState())
 
-    val uiState: StateFlow<AirSenseDeviceUiState> = combine(
-        combine(
-            repository.getDevices(),
-            _statusFilter,
-            _sortOption
-        ) { devices, filter, sort ->
-            val filteredAndSorted = devices
-                .filter { filter == null || it.deviceStatus == filter }
-                .sortedWith { d1, d2 ->
-                    when (sort) {
-                        SortOption.REGISTRATION_ORDER -> d1.id.compareTo(d2.id)
-                        SortOption.NAME -> d1.name.compareTo(d2.name, ignoreCase = true)
-                        SortOption.STATUS -> d1.status.compareTo(d2.status)
-                        SortOption.ENVIRONMENT -> {
-                            val env1 = d1.environmentId ?: Int.MAX_VALUE
-                            val env2 = d2.environmentId ?: Int.MAX_VALUE
-                            env1.compareTo(env2)
-                        }
+    private val _filteredDevices: Flow<List<AirSenseDevice>> = combine(
+        repository.getDevices(),
+        _statusFilter,
+        _sortOption
+    ) { devices, filter, sort ->
+        devices
+            .filter { filter == null || it.deviceStatus == filter }
+            .sortedWith { d1, d2 ->
+                when (sort) {
+                    SortOption.REGISTRATION_ORDER -> d1.id.compareTo(d2.id)
+                    SortOption.NAME -> d1.name.compareTo(d2.name, ignoreCase = true)
+                    SortOption.STATUS -> d1.deviceStatus.compareTo(d2.deviceStatus)
+                    SortOption.ENVIRONMENT -> {
+                        val env1 = d1.environmentId ?: Int.MAX_VALUE
+                        val env2 = d2.environmentId ?: Int.MAX_VALUE
+                        env1.compareTo(env2)
                     }
                 }
-            Triple(filteredAndSorted, filter, sort)
-        },
-        combine(
-            _isAddOptionsModalOpen,
-            _isFullScreenPopupOpen,
-            _deviceBeingEdited,
-            _formState,
-            _toastMessage
-        ) { isModalOpen, isPopupOpen, editingDevice, form, toast ->
-            PopupAndFormState(isModalOpen, isPopupOpen, editingDevice, form, toast)
-        }
-    ) { (devices, filter, sort), popupState ->
+            }
+    }
+
+    val uiState: StateFlow<AirSenseDeviceUiState> = combine(
+        _filteredDevices,
+        _statusFilter,
+        _sortOption,
+        _overlayState
+    ) { devices, filter, sort, overlay ->
         AirSenseDeviceUiState(
             devices = devices,
             selectedStatusFilter = filter,
             selectedSortOption = sort,
-            isAddOptionsModalOpen = popupState.isAddOptionsModalOpen,
-            isFullScreenPopupOpen = popupState.isFullScreenPopupOpen,
-            deviceBeingEdited = popupState.deviceBeingEdited,
-            formName = popupState.form.name,
-            formDeviceId = popupState.form.deviceId,
-            formStatus = popupState.form.status,
-            formTempRange = popupState.form.tempRange,
-            formHumidityRange = popupState.form.humidityRange,
-            formAirQualityRange = popupState.form.airQualityRange,
-            formCo2Range = popupState.form.co2Range,
-            toastMessage = popupState.toast
+            isAddOptionsModalOpen = overlay.isAddOptionsModalOpen,
+            isFullScreenPopupOpen = overlay.isFullScreenPopupOpen,
+            deviceBeingEdited = overlay.deviceBeingEdited,
+            form = overlay.form,
+            toastMessage = overlay.toastMessage
         )
     }.stateIn(
         scope = viewModelScope,
@@ -134,82 +131,67 @@ class AirSenseDeviceViewModel(
     }
 
     fun onOpenAddOptions() {
-        _isAddOptionsModalOpen.value = true
+        _overlayState.update { it.copy(isAddOptionsModalOpen = true) }
     }
 
     fun onCloseAddOptions() {
-        _isAddOptionsModalOpen.value = false
+        _overlayState.update { it.copy(isAddOptionsModalOpen = false) }
     }
 
     fun onSelectQrCodeOption() {
-        _isAddOptionsModalOpen.value = false
-        _toastMessage.value = "Funcionalidade de QR Code em desenvolvimento."
+        _overlayState.update {
+            it.copy(
+                isAddOptionsModalOpen = false,
+                toastMessage = "Funcionalidade de QR Code em desenvolvimento."
+            )
+        }
     }
 
     fun onOpenManualRegister() {
-        _isAddOptionsModalOpen.value = false
-        _deviceBeingEdited.value = null
-        _formState.value = FormState(
-            name = "",
-            deviceId = generateRandomDeviceId(),
-            status = DeviceStatus.ACTIVE,
-            tempRange = 18.0f..26.0f,
-            humidityRange = 30.0f..60.0f,
-            airQualityRange = 0.0f..100.0f,
-            co2Range = 400.0f..1000.0f
-        )
-        _isFullScreenPopupOpen.value = true
+        _overlayState.update {
+            it.copy(
+                isAddOptionsModalOpen = false,
+                deviceBeingEdited = null,
+                form = FormState.default(randomDeviceId = generateRandomDeviceId()),
+                isFullScreenPopupOpen = true
+            )
+        }
     }
 
     fun onOpenEditDevice(device: AirSenseDevice) {
-        _deviceBeingEdited.value = device
-        _formState.value = FormState(
-            name = device.name,
-            deviceId = device.deviceId,
-            status = device.deviceStatus,
-            tempRange = device.tempMinSafe..device.tempMaxSafe,
-            humidityRange = device.humidityMinSafe..device.humidityMaxSafe,
-            airQualityRange = device.airQualityMinSafe..device.airQualityMaxSafe,
-            co2Range = device.co2MinSafe..device.co2MaxSafe
-        )
-        _isFullScreenPopupOpen.value = true
+        _overlayState.update {
+            it.copy(
+                deviceBeingEdited = device,
+                form = FormState(
+                    name = device.name,
+                    deviceId = device.deviceId,
+                    status = device.deviceStatus,
+                    tempRange = device.tempMinSafe..device.tempMaxSafe,
+                    humidityRange = device.humidityMinSafe..device.humidityMaxSafe,
+                    airQualityRange = device.airQualityMinSafe..device.airQualityMaxSafe,
+                    co2Range = device.co2MinSafe..device.co2MaxSafe
+                ),
+                isFullScreenPopupOpen = true
+            )
+        }
     }
 
     fun onCloseFullScreenPopup() {
-        _isFullScreenPopupOpen.value = false
-        _deviceBeingEdited.value = null
+        _overlayState.update {
+            it.copy(
+                isFullScreenPopupOpen = false,
+                deviceBeingEdited = null
+            )
+        }
     }
 
-    fun onFormNameChanged(name: String) {
-        _formState.update { it.copy(name = name) }
-    }
-
-    fun onFormDeviceIdChanged(deviceId: String) {
-        _formState.update { it.copy(deviceId = deviceId) }
-    }
-
-    fun onFormStatusChanged(status: DeviceStatus) {
-        _formState.update { it.copy(status = status) }
-    }
-
-    fun onFormTempRangeChanged(range: ClosedFloatingPointRange<Float>) {
-        _formState.update { it.copy(tempRange = range) }
-    }
-
-    fun onFormHumidityRangeChanged(range: ClosedFloatingPointRange<Float>) {
-        _formState.update { it.copy(humidityRange = range) }
-    }
-
-    fun onFormAirQualityRangeChanged(range: ClosedFloatingPointRange<Float>) {
-        _formState.update { it.copy(airQualityRange = range) }
-    }
-
-    fun onFormCo2RangeChanged(range: ClosedFloatingPointRange<Float>) {
-        _formState.update { it.copy(co2Range = range) }
+    fun onFormChange(newForm: FormState) {
+        _overlayState.update { it.copy(form = newForm) }
     }
 
     fun onGenerateRandomDeviceId() {
-        _formState.update { it.copy(deviceId = generateRandomDeviceId()) }
+        val newId = generateRandomDeviceId()
+        _overlayState.update { it.copy(form = it.form.copy(deviceId = newId)) }
     }
 
     private fun generateRandomDeviceId(): String {
@@ -217,13 +199,13 @@ class AirSenseDeviceViewModel(
     }
 
     fun onSaveDevice() {
-        val form = _formState.value
+        val form = _overlayState.value.form
         val name = form.name.trim()
         if (name.isBlank()) return
 
         val finalDeviceId = form.deviceId.trim().ifBlank { generateRandomDeviceId() }
+        val editing = _overlayState.value.deviceBeingEdited
 
-        val editing = _deviceBeingEdited.value
         val deviceToSave = AirSenseDevice(
             id = editing?.id ?: 0,
             name = name,
@@ -254,18 +236,6 @@ class AirSenseDeviceViewModel(
     }
 
     fun onToastMessageShown() {
-        _toastMessage.value = null
-    }
-
-    class Factory(
-        private val repository: AirSenseDeviceRepository
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(AirSenseDeviceViewModel::class.java)) {
-                return AirSenseDeviceViewModel(repository) as T
-            }
-            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
-        }
+        _overlayState.update { it.copy(toastMessage = null) }
     }
 }
