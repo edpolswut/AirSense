@@ -1,24 +1,8 @@
 package br.airsense.model
 
+import androidx.compose.ui.graphics.Color
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-
-enum class DeviceStatus(val code: Int, val label: String) {
-    OFF(0, "Desligado"),
-    ACTIVE(1, "Ativo"),
-    NOT_WORKING(2, "Com defeito");
-
-    companion object {
-        fun fromCode(code: Int): DeviceStatus = entries.firstOrNull { it.code == code } ?: OFF
-    }
-}
-
-object ReadingLimits {
-    val TEMP_BOUNDS = -10.0f..50.0f
-    val HUMIDITY_BOUNDS = 0.0f..100.0f
-    val AIR_QUALITY_BOUNDS = 0.0f..500.0f
-    val CO2_BOUNDS = 300.0f..5000.0f
-}
 
 @Entity(tableName = "device")
 data class AirSenseDevice(
@@ -45,4 +29,32 @@ data class AirSenseDevice(
 ) {
     val deviceStatus: DeviceStatus
         get() = DeviceStatus.fromCode(status)
+
+    val badgeColors: Pair<Color, Color>
+        get() = deviceStatus.badgeColors
+}
+
+object ReadingLimits {
+    val TEMP_BOUNDS = -10.0f..50.0f
+    val HUMIDITY_BOUNDS = 0.0f..100.0f
+    val AIR_QUALITY_BOUNDS = 0.0f..500.0f
+    val CO2_BOUNDS = 300.0f..5000.0f
+}
+
+enum class DeviceStatus(
+    val code: Int,
+    val label: String,
+    val backgroundColor: Color,
+    val contentColor: Color
+) {
+    OFF(0, "Desligado", Color(0xFFECEFF1), Color(0xFF546E7A)),
+    ACTIVE(1, "Ativo", Color(0xFFE8F5E9), Color(0xFF2E7D32)),
+    NOT_WORKING(2, "Com defeito", Color(0xFFFFEBEE), Color(0xFFC62828));
+
+    val badgeColors: Pair<Color, Color>
+        get() = backgroundColor to contentColor
+
+    companion object {
+        fun fromCode(code: Int): DeviceStatus = entries.firstOrNull { it.code == code } ?: OFF
+    }
 }

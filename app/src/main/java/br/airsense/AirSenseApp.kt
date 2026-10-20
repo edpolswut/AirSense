@@ -52,7 +52,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import br.airsense.ui.screens.AirSenseDeviceScreen
+import br.airsense.ui.screens.devices.AirSenseDeviceScreen
 import br.airsense.ui.screens.EnvironmentScreen
 import br.airsense.ui.screens.HomeScreen
 import br.airsense.ui.screens.ReportScreen
