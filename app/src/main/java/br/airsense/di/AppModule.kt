@@ -3,6 +3,7 @@ package br.airsense.di
 import android.content.Context
 import br.airsense.data.local.AirSenseDatabase
 import br.airsense.data.local.AirSenseDeviceDao
+import br.airsense.data.local.UserDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,5 +24,10 @@ object AppModule {
     @Provides
     fun provideAirSenseDeviceDao(database: AirSenseDatabase): AirSenseDeviceDao {
         return database.airSenseDeviceDao()
+    }
+
+    @Provides
+    fun provideUserDao(database: AirSenseDatabase): UserDao {
+        return database.userDao()
     }
 }

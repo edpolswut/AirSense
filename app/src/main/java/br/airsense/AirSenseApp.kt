@@ -64,7 +64,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun AirSenseApp(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
-    onThemeModeChange: (AppThemeMode) -> Unit = {}
+    onThemeModeChange: (AppThemeMode) -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val entradaAtual by navController.currentBackStackEntryAsState()
@@ -130,6 +131,7 @@ fun AirSenseApp(
                     selected = false,
                     onClick = {
                         scope.launch { drawerState.close() }
+                        onLogout()
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
