@@ -3,14 +3,17 @@ package br.airsense.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import br.airsense.data.repository.AirSenseDeviceRepository
+import br.airsense.data.session.SessionManager
 import br.airsense.model.AirSenseDevice
 import br.airsense.model.DeviceStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -72,15 +75,31 @@ data class AirSenseDeviceUiState(
 
 @HiltViewModel
 class AirSenseDeviceViewModel @Inject constructor(
-    private val repository: AirSenseDeviceRepository
+    private val repository: AirSenseDeviceRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _statusFilter = MutableStateFlow<DeviceStatus?>(null)
     private val _sortOption = MutableStateFlow(SortOption.REGISTRATION_ORDER)
     private val _overlayState = MutableStateFlow(UiOverlayState())
 
+    private val _currentUserId = sessionManager.userIdFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = null
+    )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val _userDevices: Flow<List<AirSenseDevice>> = sessionManager.userIdFlow.flatMapLatest { userId ->
+        if (!userId.isNullOrBlank()) {
+            repository.getDevicesForUser(userId)
+        } else {
+            repository.getDevices()
+        }
+    }
+
     private val _filteredDevices: Flow<List<AirSenseDevice>> = combine(
-        repository.getDevices(),
+        _userDevices,
         _statusFilter,
         _sortOption
     ) { devices, filter, sort ->
@@ -205,9 +224,11 @@ class AirSenseDeviceViewModel @Inject constructor(
 
         val finalDeviceId = form.deviceId.trim().ifBlank { generateRandomDeviceId() }
         val editing = _overlayState.value.deviceBeingEdited
+        val currentUserId = _currentUserId.value ?: ""
 
         val deviceToSave = AirSenseDevice(
             id = editing?.id ?: 0,
+            userId = editing?.userId?.ifBlank { currentUserId } ?: currentUserId,
             name = name,
             deviceId = finalDeviceId,
             status = form.status.code,

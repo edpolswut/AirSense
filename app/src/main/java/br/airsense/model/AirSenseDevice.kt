@@ -2,12 +2,17 @@ package br.airsense.model
 
 import androidx.compose.ui.graphics.Color
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "device")
+@Entity(
+    tableName = "device",
+    indices = [Index(value = ["userId"])]
+)
 data class AirSenseDevice(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
+    val userId: String = "",
     val name: String,
     val deviceId: String,
     val status: Int = DeviceStatus.ACTIVE.code,

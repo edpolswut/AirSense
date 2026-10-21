@@ -302,8 +302,8 @@ fun ThemeConfigDialog(
                     Text(
                         text = "Padrão",
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (sliderPosition >= 0.5f && sliderPosition < 1.5f) FontWeight.Bold else FontWeight.Normal,
-                        color = if (sliderPosition >= 0.5f && sliderPosition < 1.5f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        fontWeight = if (sliderPosition in 0.5f..<1.5f) FontWeight.Bold else FontWeight.Normal,
+                        color = if (sliderPosition in 0.5f..<1.5f) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Escuro",

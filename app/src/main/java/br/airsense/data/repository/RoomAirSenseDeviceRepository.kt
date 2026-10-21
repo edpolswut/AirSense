@@ -11,6 +11,9 @@ class RoomAirSenseDeviceRepository @Inject constructor(
 
     override fun getDevices(): Flow<List<AirSenseDevice>> = dao.listar()
 
+    override fun getDevicesForUser(userId: String): Flow<List<AirSenseDevice>> =
+        dao.listarPorUsuario(userId)
+
     override suspend fun saveDevice(device: AirSenseDevice) {
         if (device.id == 0) {
             dao.inserir(device)

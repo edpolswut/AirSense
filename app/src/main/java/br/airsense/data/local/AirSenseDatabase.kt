@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import br.airsense.model.AirSenseDevice
 import br.airsense.model.User
 
-@Database(entities = [AirSenseDevice::class, User::class], version = 3, exportSchema = false)
+@Database(entities = [AirSenseDevice::class, User::class], version = 4, exportSchema = false)
 abstract class AirSenseDatabase : RoomDatabase() {
     abstract fun airSenseDeviceDao(): AirSenseDeviceDao
     abstract fun userDao(): UserDao
@@ -41,6 +41,18 @@ abstract class AirSenseDatabase : RoomDatabase() {
             }
         }
 
+        /** Adiciona a coluna userId na tabela device para vincular dispositivos a cada usuário. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `device` ADD COLUMN `userId` TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_device_userId` ON `device` (`userId`)"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AirSenseDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -48,8 +60,8 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     AirSenseDatabase::class.java,
                     "airsense.db"
                 )
-                    .addMigrations(MIGRATION_2_3)
-                    // Só a versão 1 (anterior à migração) ainda é descartada.
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    // Versão 1 ainda é descartada.
                     .fallbackToDestructiveMigrationFrom(true, 1)
                     .build().also { INSTANCE = it }
             }
