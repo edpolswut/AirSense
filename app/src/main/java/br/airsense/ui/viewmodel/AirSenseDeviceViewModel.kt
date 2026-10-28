@@ -157,11 +157,14 @@ class AirSenseDeviceViewModel @Inject constructor(
         _overlayState.update { it.copy(isAddOptionsModalOpen = false) }
     }
 
-    fun onSelectQrCodeOption() {
+    fun onQrCodeScanned(scannedCode: String) {
         _overlayState.update {
             it.copy(
                 isAddOptionsModalOpen = false,
-                toastMessage = "Funcionalidade de QR Code em desenvolvimento."
+                deviceBeingEdited = null,
+                form = FormState.default(randomDeviceId = scannedCode),
+                isFullScreenPopupOpen = true
+                //Usando o leitor do google pra n precisar pedir permissão de camera
             )
         }
     }

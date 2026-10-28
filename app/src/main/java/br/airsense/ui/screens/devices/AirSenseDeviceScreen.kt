@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +31,9 @@ import br.airsense.ui.components.FilterChipRow
 import br.airsense.ui.components.SortDropdown
 import br.airsense.ui.viewmodel.AirSenseDeviceViewModel
 import br.airsense.ui.viewmodel.SortOption
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 @Composable
 fun AirSenseDeviceScreen(
@@ -103,10 +107,31 @@ fun AirSenseDeviceScreen(
         }
     }
 
+    val scanner = remember(context) {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        GmsBarcodeScanning.getClient(context, options)
+    }
+
+    fun startQrScan() {
+        viewModel.onCloseAddOptions()
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                barcode.rawValue?.let { scannedValue ->
+                    viewModel.onQrCodeScanned(scannedValue)
+                }
+            }
+            .addOnFailureListener {
+                // Ignore cancellation or failure
+            }
+    }
+
     if (uiState.isAddOptionsModalOpen) {
         AddDeviceOptionsSheet(
             onDismiss = viewModel::onCloseAddOptions,
-            onSelectQrCode = viewModel::onSelectQrCodeOption,
+            onSelectQrCode = { startQrScan() },
             onSelectManual = viewModel::onOpenManualRegister
         )
     }
