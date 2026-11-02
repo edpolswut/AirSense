@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import br.airsense.model.AirQualityReading
 import br.airsense.model.AirSenseDevice
 import br.airsense.model.Environment
 import br.airsense.model.EnvironmentRoom
@@ -16,15 +17,17 @@ import br.airsense.model.User
         AirSenseDevice::class,
         User::class,
         Environment::class,
-        EnvironmentRoom::class
+        EnvironmentRoom::class,
+        AirQualityReading::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AirSenseDatabase : RoomDatabase() {
     abstract fun airSenseDeviceDao(): AirSenseDeviceDao
     abstract fun userDao(): UserDao
     abstract fun environmentDao(): EnvironmentDao
+    abstract fun airQualityReadingDao(): AirQualityReadingDao
 
     companion object {
         @Volatile
@@ -46,20 +49,14 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                db.execSQL(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_user_email` ON `user` (`email`)"
-                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_user_email` ON `user` (`email`)")
             }
         }
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    "ALTER TABLE `device` ADD COLUMN `userId` TEXT NOT NULL DEFAULT ''"
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS `index_device_userId` ON `device` (`userId`)"
-                )
+                db.execSQL("ALTER TABLE `device` ADD COLUMN `userId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_device_userId` ON `device` (`userId`)")
             }
         }
 
@@ -75,9 +72,7 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS `index_environment_userId` ON `environment` (`userId`)"
-                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_environment_userId` ON `environment` (`userId`)")
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `room` (
@@ -89,9 +84,29 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_room_environmentId` ON `room` (`environmentId`)")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS `index_room_environmentId` ON `room` (`environmentId`)"
+                    """
+                    CREATE TABLE IF NOT EXISTS `air_quality_reading` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `deviceId` TEXT NOT NULL,
+                        `environmentId` INTEGER,
+                        `roomId` INTEGER,
+                        `temperature` REAL NOT NULL,
+                        `humidity` REAL NOT NULL,
+                        `airQualityIndex` REAL NOT NULL,
+                        `co2Level` REAL NOT NULL,
+                        `timestamp` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
                 )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_air_quality_reading_deviceId` ON `air_quality_reading` (`deviceId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_air_quality_reading_environmentId` ON `air_quality_reading` (`environmentId`)")
             }
         }
 
@@ -102,7 +117,7 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     AirSenseDatabase::class.java,
                     "airsense.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigrationFrom(true, 1)
                     .build().also { INSTANCE = it }
             }

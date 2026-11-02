@@ -1,7 +1,9 @@
 package br.airsense.di
 
+import br.airsense.data.repository.AirQualityRepository
 import br.airsense.data.repository.AirSenseDeviceRepository
 import br.airsense.data.repository.EnvironmentRepository
+import br.airsense.data.repository.RoomAirQualityRepository
 import br.airsense.data.repository.RoomAirSenseDeviceRepository
 import br.airsense.data.repository.RoomEnvironmentRepository
 import br.airsense.data.repository.RoomUserRepository
@@ -48,5 +50,13 @@ object RepositoryModule {
         hasher: Sha256PasswordHasher
     ): PasswordHasher {
         return hasher
+    }
+
+    @Provides
+    @Singleton
+    fun provideAirQualityRepository(
+        repository: RoomAirQualityRepository
+    ): AirQualityRepository {
+        return repository
     }
 }

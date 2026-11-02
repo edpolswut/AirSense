@@ -1,6 +1,7 @@
 package br.airsense.di
 
 import android.content.Context
+import br.airsense.data.local.AirQualityReadingDao
 import br.airsense.data.local.AirSenseDatabase
 import br.airsense.data.local.AirSenseDeviceDao
 import br.airsense.data.local.EnvironmentDao
@@ -35,5 +36,10 @@ object AppModule {
     @Provides
     fun provideEnvironmentDao(database: AirSenseDatabase): EnvironmentDao {
         return database.environmentDao()
+    }
+
+    @Provides
+    fun provideAirQualityReadingDao(database: AirSenseDatabase): AirQualityReadingDao {
+        return database.airQualityReadingDao()
     }
 }
