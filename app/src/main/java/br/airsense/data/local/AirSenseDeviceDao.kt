@@ -20,6 +20,15 @@ interface AirSenseDeviceDao {
     @Query("SELECT * FROM device WHERE userId = :userId ORDER BY id ASC")
     fun listarPorUsuario(userId: String): Flow<List<AirSenseDevice>>
 
+    @Query("SELECT * FROM device WHERE userId = :userId AND LOWER(deviceId) = LOWER(:deviceId) LIMIT 1")
+    suspend fun buscarPorDeviceId(userId: String, deviceId: String): AirSenseDevice?
+
+    @Query("UPDATE device SET environmentId = NULL, roomId = NULL WHERE environmentId = :environmentId")
+    suspend fun desvincularAmbiente(environmentId: Int)
+
+    @Query("UPDATE device SET roomId = NULL WHERE roomId = :roomId")
+    suspend fun desvincularComodo(roomId: Int)
+
     @Update
     suspend fun atualizar(device: AirSenseDevice)
 

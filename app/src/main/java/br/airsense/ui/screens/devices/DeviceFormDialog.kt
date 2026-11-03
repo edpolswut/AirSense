@@ -3,6 +3,8 @@ package br.airsense.ui.screens.devices
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,26 +26,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import br.airsense.model.DeviceStatus
+import br.airsense.model.Environment
+import br.airsense.model.EnvironmentRoom
 import br.airsense.model.ReadingLimits
 import br.airsense.ui.components.FullScreenDialog
 import br.airsense.ui.components.RangeSliderCard
 import br.airsense.ui.viewmodel.FormState
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DeviceFormDialog(
     isEditing: Boolean,
     form: FormState,
+    environments: List<Environment>,
+    rooms: List<EnvironmentRoom>,
     onFormChange: (FormState) -> Unit,
     onGenerateRandomDeviceId: () -> Unit,
     onClose: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val availableRooms = rooms.filter { it.environmentId == form.environmentId }
+
     FullScreenDialog(
         title = if (isEditing) "Editar Dispositivo" else "Novo Dispositivo",
         onClose = onClose,
         onConfirm = onSave,
-        confirmEnabled = form.name.isNotBlank(),
+        confirmEnabled = true,
         modifier = modifier
     ) {
         Column(
@@ -62,6 +71,8 @@ fun DeviceFormDialog(
                 onValueChange = { onFormChange(form.copy(name = it)) },
                 label = { Text("Nome do Dispositivo") },
                 singleLine = true,
+                isError = form.nameError != null,
+                supportingText = { form.nameError?.let { Text(it) } },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -70,13 +81,15 @@ fun DeviceFormDialog(
                 onValueChange = { onFormChange(form.copy(deviceId = it)) },
                 label = { Text("ID do Dispositivo (DeviceId)") },
                 singleLine = true,
+                isError = form.deviceIdError != null,
                 trailingIcon = {
                     IconButton(onClick = onGenerateRandomDeviceId) {
                         Icon(Icons.Default.Refresh, contentDescription = "Gerar ID Aleatório")
                     }
                 },
                 supportingText = {
-                    Text("Gerado automaticamente se deixado em branco")
+                    val msg = form.deviceIdError ?: "Gerado automaticamente se deixado em branco"
+                    Text(msg)
                 },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -98,6 +111,71 @@ fun DeviceFormDialog(
                         label = { Text(st.label) },
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            Text(
+                text = "Localização (Ambiente e Cômodo)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            if (environments.isEmpty()) {
+                Text(
+                    text = "Nenhum ambiente cadastrado. Cadastre ambientes na aba Ambientes para vincular dispositivos.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = "Ambiente:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    FilterChip(
+                        selected = form.environmentId == null,
+                        onClick = { onFormChange(form.copy(environmentId = null, roomId = null)) },
+                        label = { Text("Nenhum") }
+                    )
+                    environments.forEach { env ->
+                        FilterChip(
+                            selected = form.environmentId == env.id,
+                            onClick = {
+                                onFormChange(form.copy(environmentId = env.id, roomId = null))
+                            },
+                            label = { Text(env.name) }
+                        )
+                    }
+                }
+
+                if (form.environmentId != null && availableRooms.isNotEmpty()) {
+                    Text(
+                        text = "Cômodo:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        FilterChip(
+                            selected = form.roomId == null,
+                            onClick = { onFormChange(form.copy(roomId = null)) },
+                            label = { Text("Sem cômodo específico") }
+                        )
+                        availableRooms.forEach { room ->
+                            FilterChip(
+                                selected = form.roomId == room.id,
+                                onClick = { onFormChange(form.copy(roomId = room.id)) },
+                                label = { Text(room.name) }
+                            )
+                        }
+                    }
                 }
             }
 

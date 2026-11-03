@@ -83,7 +83,6 @@ fun AirSenseDeviceScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-
                 SortDropdown(
                     options = SortOption.entries,
                     selected = uiState.selectedSortOption,
@@ -94,6 +93,8 @@ fun AirSenseDeviceScreen(
 
             DeviceList(
                 devices = uiState.devices,
+                environments = uiState.environments,
+                rooms = uiState.rooms,
                 onEditDevice = viewModel::onOpenEditDevice,
                 onDeleteDevice = viewModel::onDeleteDevice,
                 modifier = Modifier
@@ -115,6 +116,8 @@ fun AirSenseDeviceScreen(
         DeviceFormDialog(
             isEditing = uiState.deviceBeingEdited != null,
             form = uiState.form,
+            environments = uiState.environments,
+            rooms = uiState.rooms,
             onFormChange = viewModel::onFormChange,
             onGenerateRandomDeviceId = viewModel::onGenerateRandomDeviceId,
             onClose = viewModel::onCloseFullScreenPopup,

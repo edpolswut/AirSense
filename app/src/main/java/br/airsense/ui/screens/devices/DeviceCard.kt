@@ -32,6 +32,7 @@ import kotlin.math.roundToInt
 @Composable
 fun DeviceCard(
     device: AirSenseDevice,
+    locationLabel: String,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -95,7 +96,7 @@ fun DeviceCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Ambiente / Sala: Não definido",
+                    text = "Ambiente / Cômodo: $locationLabel",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(8.dp)
                 )

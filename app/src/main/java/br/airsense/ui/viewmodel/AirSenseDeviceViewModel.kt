@@ -3,9 +3,12 @@ package br.airsense.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import br.airsense.data.repository.AirSenseDeviceRepository
+import br.airsense.data.repository.EnvironmentRepository
 import br.airsense.data.session.SessionManager
 import br.airsense.model.AirSenseDevice
 import br.airsense.model.DeviceStatus
+import br.airsense.model.Environment
+import br.airsense.model.EnvironmentRoom
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +34,10 @@ data class FormState(
     val name: String = "",
     val deviceId: String = "",
     val status: DeviceStatus = DeviceStatus.ACTIVE,
+    val environmentId: Int? = null,
+    val roomId: Int? = null,
+    val nameError: String? = null,
+    val deviceIdError: String? = null,
     val tempRange: ClosedFloatingPointRange<Float> = DEFAULT_TEMP_RANGE,
     val humidityRange: ClosedFloatingPointRange<Float> = DEFAULT_HUMIDITY_RANGE,
     val airQualityRange: ClosedFloatingPointRange<Float> = DEFAULT_AIR_QUALITY_RANGE,
@@ -46,6 +53,8 @@ data class FormState(
             name = "",
             deviceId = randomDeviceId,
             status = DeviceStatus.ACTIVE,
+            environmentId = null,
+            roomId = null,
             tempRange = DEFAULT_TEMP_RANGE,
             humidityRange = DEFAULT_HUMIDITY_RANGE,
             airQualityRange = DEFAULT_AIR_QUALITY_RANGE,
@@ -64,6 +73,8 @@ data class UiOverlayState(
 
 data class AirSenseDeviceUiState(
     val devices: List<AirSenseDevice> = emptyList(),
+    val environments: List<Environment> = emptyList(),
+    val rooms: List<EnvironmentRoom> = emptyList(),
     val selectedStatusFilter: DeviceStatus? = null,
     val selectedSortOption: SortOption = SortOption.REGISTRATION_ORDER,
     val isAddOptionsModalOpen: Boolean = false,
@@ -76,6 +87,7 @@ data class AirSenseDeviceUiState(
 @HiltViewModel
 class AirSenseDeviceViewModel @Inject constructor(
     private val repository: AirSenseDeviceRepository,
+    private val environmentRepository: EnvironmentRepository,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
@@ -95,6 +107,15 @@ class AirSenseDeviceViewModel @Inject constructor(
             repository.getDevicesForUser(userId)
         } else {
             repository.getDevices()
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val _userEnvironments: Flow<List<Environment>> = sessionManager.userIdFlow.flatMapLatest { userId ->
+        if (!userId.isNullOrBlank()) {
+            environmentRepository.getEnvironmentsForUser(userId)
+        } else {
+            environmentRepository.getAllEnvironments()
         }
     }
 
@@ -121,12 +142,15 @@ class AirSenseDeviceViewModel @Inject constructor(
 
     val uiState: StateFlow<AirSenseDeviceUiState> = combine(
         _filteredDevices,
+        _userEnvironments,
+        environmentRepository.getAllRooms(),
         _statusFilter,
-        _sortOption,
-        _overlayState
-    ) { devices, filter, sort, overlay ->
+        combine(_sortOption, _overlayState) { s, o -> s to o }
+    ) { devices, environments, rooms, filter, (sort, overlay) ->
         AirSenseDeviceUiState(
             devices = devices,
+            environments = environments,
+            rooms = rooms,
             selectedStatusFilter = filter,
             selectedSortOption = sort,
             isAddOptionsModalOpen = overlay.isAddOptionsModalOpen,
@@ -185,6 +209,8 @@ class AirSenseDeviceViewModel @Inject constructor(
                     name = device.name,
                     deviceId = device.deviceId,
                     status = device.deviceStatus,
+                    environmentId = device.environmentId,
+                    roomId = device.roomId,
                     tempRange = device.tempMinSafe..device.tempMaxSafe,
                     humidityRange = device.humidityMinSafe..device.humidityMaxSafe,
                     airQualityRange = device.airQualityMinSafe..device.airQualityMaxSafe,
@@ -205,12 +231,21 @@ class AirSenseDeviceViewModel @Inject constructor(
     }
 
     fun onFormChange(newForm: FormState) {
-        _overlayState.update { it.copy(form = newForm) }
+        _overlayState.update {
+            it.copy(
+                form = newForm.copy(
+                    nameError = if (newForm.name != it.form.name) null else newForm.nameError,
+                    deviceIdError = if (newForm.deviceId != it.form.deviceId) null else newForm.deviceIdError
+                )
+            )
+        }
     }
 
     fun onGenerateRandomDeviceId() {
         val newId = generateRandomDeviceId()
-        _overlayState.update { it.copy(form = it.form.copy(deviceId = newId)) }
+        _overlayState.update {
+            it.copy(form = it.form.copy(deviceId = newId, deviceIdError = null))
+        }
     }
 
     private fun generateRandomDeviceId(): String {
@@ -220,31 +255,45 @@ class AirSenseDeviceViewModel @Inject constructor(
     fun onSaveDevice() {
         val form = _overlayState.value.form
         val name = form.name.trim()
-        if (name.isBlank()) return
-
-        val finalDeviceId = form.deviceId.trim().ifBlank { generateRandomDeviceId() }
         val editing = _overlayState.value.deviceBeingEdited
         val currentUserId = _currentUserId.value ?: ""
 
-        val deviceToSave = AirSenseDevice(
-            id = editing?.id ?: 0,
-            userId = editing?.userId?.ifBlank { currentUserId } ?: currentUserId,
-            name = name,
-            deviceId = finalDeviceId,
-            status = form.status.code,
-            environmentId = editing?.environmentId,
-            roomId = editing?.roomId,
-            tempMinSafe = form.tempRange.start,
-            tempMaxSafe = form.tempRange.endInclusive,
-            humidityMinSafe = form.humidityRange.start,
-            humidityMaxSafe = form.humidityRange.endInclusive,
-            airQualityMinSafe = form.airQualityRange.start,
-            airQualityMaxSafe = form.airQualityRange.endInclusive,
-            co2MinSafe = form.co2Range.start,
-            co2MaxSafe = form.co2Range.endInclusive
-        )
+        if (name.isEmpty()) {
+            _overlayState.update {
+                it.copy(form = it.form.copy(nameError = "Informe o nome do dispositivo"))
+            }
+            return
+        }
+
+        val finalDeviceId = form.deviceId.trim().ifBlank { generateRandomDeviceId() }
 
         viewModelScope.launch {
+            val existing = repository.findByDeviceId(currentUserId, finalDeviceId)
+            if (existing != null && existing.id != editing?.id) {
+                _overlayState.update {
+                    it.copy(form = it.form.copy(deviceIdError = "Este ID de dispositivo já está cadastrado"))
+                }
+                return@launch
+            }
+
+            val deviceToSave = AirSenseDevice(
+                id = editing?.id ?: 0,
+                userId = editing?.userId?.ifBlank { currentUserId } ?: currentUserId,
+                name = name,
+                deviceId = finalDeviceId,
+                status = form.status.code,
+                environmentId = form.environmentId,
+                roomId = if (form.environmentId != null) form.roomId else null,
+                tempMinSafe = form.tempRange.start,
+                tempMaxSafe = form.tempRange.endInclusive,
+                humidityMinSafe = form.humidityRange.start,
+                humidityMaxSafe = form.humidityRange.endInclusive,
+                airQualityMinSafe = form.airQualityRange.start,
+                airQualityMaxSafe = form.airQualityRange.endInclusive,
+                co2MinSafe = form.co2Range.start,
+                co2MaxSafe = form.co2Range.endInclusive
+            )
+
             repository.saveDevice(deviceToSave)
             onCloseFullScreenPopup()
         }

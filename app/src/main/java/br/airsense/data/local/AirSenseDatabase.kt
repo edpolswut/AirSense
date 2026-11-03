@@ -7,18 +7,29 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import br.airsense.model.AirSenseDevice
+import br.airsense.model.Environment
+import br.airsense.model.EnvironmentRoom
 import br.airsense.model.User
 
-@Database(entities = [AirSenseDevice::class, User::class], version = 4, exportSchema = false)
+@Database(
+    entities = [
+        AirSenseDevice::class,
+        User::class,
+        Environment::class,
+        EnvironmentRoom::class
+    ],
+    version = 5,
+    exportSchema = false
+)
 abstract class AirSenseDatabase : RoomDatabase() {
     abstract fun airSenseDeviceDao(): AirSenseDeviceDao
     abstract fun userDao(): UserDao
+    abstract fun environmentDao(): EnvironmentDao
 
     companion object {
         @Volatile
         private var INSTANCE: AirSenseDatabase? = null
 
-        /** Cria a tabela de usuários sem tocar nos dispositivos já cadastrados. */
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -41,7 +52,6 @@ abstract class AirSenseDatabase : RoomDatabase() {
             }
         }
 
-        /** Adiciona a coluna userId na tabela device para vincular dispositivos a cada usuário. */
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -53,6 +63,38 @@ abstract class AirSenseDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `environment` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `userId` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `description` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_environment_userId` ON `environment` (`userId`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `room` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `environmentId` INTEGER NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        FOREIGN KEY(`environmentId`) REFERENCES `environment`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_room_environmentId` ON `room` (`environmentId`)"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AirSenseDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -60,8 +102,7 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     AirSenseDatabase::class.java,
                     "airsense.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
-                    // Versão 1 ainda é descartada.
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigrationFrom(true, 1)
                     .build().also { INSTANCE = it }
             }
