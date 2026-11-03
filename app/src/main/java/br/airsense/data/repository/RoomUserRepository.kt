@@ -12,6 +12,9 @@ import javax.inject.Inject
 
 private fun normalizeEmail(email: String): String = email.trim().lowercase()
 
+private const val MAX_FAILED_ATTEMPTS = 5
+private const val LOCK_DURATION_MS = 15 * 60 * 1000L
+
 class RoomUserRepository @Inject constructor(
     private val dao: UserDao,
     private val hasher: PasswordHasher
@@ -48,10 +51,26 @@ class RoomUserRepository @Inject constructor(
         val user = dao.buscarPorEmail(normalizeEmail(email))
             ?: return AuthResult.Failure(AuthError.INVALID_CREDENTIALS)
 
-        // Mesmo erro para e-mail inexistente e senha errada, para não revelar quais e-mails existem.
-        return if (hasher.verify(password, user.salt, user.passwordHash)) {
-            AuthResult.Success(user)
+        val now = System.currentTimeMillis()
+        if (user.lockedUntil > now) {
+            return AuthResult.Failure(AuthError.ACCOUNT_LOCKED)
+        }
+
+        if (hasher.verify(password, user.salt, user.passwordHash)) {
+            if (user.failedLoginAttempts > 0 || user.lockedUntil > 0) {
+                dao.atualizar(user.copy(failedLoginAttempts = 0, lockedUntil = 0))
+            }
+            return AuthResult.Success(user)
+        }
+
+        // Na 5ª senha errada seguida, bloqueia por 15 minutos e zera o contador.
+        val attempts = user.failedLoginAttempts + 1
+        return if (attempts >= MAX_FAILED_ATTEMPTS) {
+            dao.atualizar(user.copy(failedLoginAttempts = 0, lockedUntil = now + LOCK_DURATION_MS))
+            AuthResult.Failure(AuthError.ACCOUNT_LOCKED)
         } else {
+            dao.atualizar(user.copy(failedLoginAttempts = attempts))
+            // Mesmo erro para e-mail inexistente e senha errada, para não revelar quais e-mails existem.
             AuthResult.Failure(AuthError.INVALID_CREDENTIALS)
         }
     }
@@ -113,7 +132,7 @@ class RoomUserRepository @Inject constructor(
     override suspend fun deleteAccount(userId: String): AuthResult<Unit> {
         val user = dao.buscarPorId(userId)
             ?: return AuthResult.Failure(AuthError.USER_NOT_FOUND)
-        dao.excluir(user)
+        dao.excluirComDados(user)
         return AuthResult.Success(Unit)
     }
 }

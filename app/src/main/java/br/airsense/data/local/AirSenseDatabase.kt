@@ -20,7 +20,7 @@ import br.airsense.model.User
         EnvironmentRoom::class,
         AirQualityReading::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AirSenseDatabase : RoomDatabase() {
@@ -110,6 +110,26 @@ abstract class AirSenseDatabase : RoomDatabase() {
             }
         }
 
+        // Bloqueio de login (US007) e configuração do cômodo: área e limites seguros (US003/US015).
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user` ADD COLUMN `failedLoginAttempts` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `user` ADD COLUMN `lockedUntil` INTEGER NOT NULL DEFAULT 0")
+                listOf(
+                    "`areaM2` REAL NOT NULL DEFAULT 0",
+                    "`useCustomLimits` INTEGER NOT NULL DEFAULT 0",
+                    "`tempMinSafe` REAL NOT NULL DEFAULT 18",
+                    "`tempMaxSafe` REAL NOT NULL DEFAULT 26",
+                    "`humidityMinSafe` REAL NOT NULL DEFAULT 30",
+                    "`humidityMaxSafe` REAL NOT NULL DEFAULT 60",
+                    "`airQualityMinSafe` REAL NOT NULL DEFAULT 0",
+                    "`airQualityMaxSafe` REAL NOT NULL DEFAULT 100",
+                    "`co2MinSafe` REAL NOT NULL DEFAULT 400",
+                    "`co2MaxSafe` REAL NOT NULL DEFAULT 1000"
+                ).forEach { db.execSQL("ALTER TABLE `room` ADD COLUMN $it") }
+            }
+        }
+
         fun getDatabase(context: Context): AirSenseDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -117,7 +137,7 @@ abstract class AirSenseDatabase : RoomDatabase() {
                     AirSenseDatabase::class.java,
                     "airsense.db"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigrationFrom(true, 1)
                     .build().also { INSTANCE = it }
             }

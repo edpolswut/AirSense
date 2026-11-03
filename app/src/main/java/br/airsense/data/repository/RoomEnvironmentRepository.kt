@@ -15,14 +15,15 @@ class RoomEnvironmentRepository @Inject constructor(
     override fun getEnvironmentsForUser(userId: String): Flow<List<Environment>> =
         environmentDao.listarAmbientesPorUsuario(userId)
 
-    override fun getAllEnvironments(): Flow<List<Environment>> =
-        environmentDao.listarTodosAmbientes()
+    override fun observeEnvironment(id: Int): Flow<Environment?> = environmentDao.observarAmbiente(id)
+
+    override fun observeRoom(id: Int): Flow<EnvironmentRoom?> = environmentDao.observarComodo(id)
 
     override fun getRoomsForEnvironment(environmentId: Int): Flow<List<EnvironmentRoom>> =
         environmentDao.listarComodosPorAmbiente(environmentId)
 
-    override fun getAllRooms(): Flow<List<EnvironmentRoom>> =
-        environmentDao.listarTodosComodos()
+    override fun getRoomsForUser(userId: String): Flow<List<EnvironmentRoom>> =
+        environmentDao.listarComodosPorUsuario(userId)
 
     override suspend fun findEnvironmentByName(userId: String, name: String): Environment? =
         environmentDao.buscarAmbientePorNome(userId, name.trim())

@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -44,7 +49,10 @@ fun DeviceFormDialog(
     onGenerateRandomDeviceId: () -> Unit,
     onClose: () -> Unit,
     onSave: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canGenerateHistory: Boolean = false,
+    isGeneratingHistory: Boolean = false,
+    onGenerateHistory: () -> Unit = {}
 ) {
     val availableRooms = rooms.filter { it.environmentId == form.environmentId }
 
@@ -241,6 +249,34 @@ fun DeviceFormDialog(
                         unit = "ppm",
                         onValueChange = { onFormChange(form.copy(co2Range = it)) }
                     )
+                }
+            }
+
+            if (canGenerateHistory) {
+                Text(
+                    text = "Dados de demonstração",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Cria uma leitura por hora dos últimos 7 dias para este dispositivo. " +
+                        "Não apaga leituras existentes; horários que já têm leitura são pulados.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    onClick = onGenerateHistory,
+                    enabled = !isGeneratingHistory,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isGeneratingHistory) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Gerar histórico aleatório")
+                    }
                 }
             }
 

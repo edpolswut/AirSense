@@ -20,6 +20,7 @@ data class LoginUiState(
     val emailError: String? = null,
     val passwordError: String? = null,
     val errorMessage: String? = null,
+    val infoMessage: String? = null,
     val isLoading: Boolean = false
 )
 
@@ -31,6 +32,13 @@ class LoginViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    /** Chamado ao voltar do cadastro: preenche o e-mail e avisa que a conta foi criada. */
+    fun onRegistered(email: String) {
+        _uiState.update {
+            LoginUiState(email = email, infoMessage = "Cadastro realizado. Entre com sua senha.")
+        }
+    }
 
     fun onEmailChange(value: String) {
         _uiState.update { it.copy(email = value, emailError = null, errorMessage = null) }
@@ -57,7 +65,7 @@ class LoginViewModel @Inject constructor(
                 // Salvar a sessão faz o SessionViewModel trocar para o app principal.
                 is AuthResult.Success -> sessionManager.saveSession(result.data.id)
                 is AuthResult.Failure ->
-                    _uiState.update { it.copy(errorMessage = result.error.message) }
+                    _uiState.update { it.copy(errorMessage = result.error.message, infoMessage = null) }
             }
             _uiState.update { it.copy(isLoading = false) }
         }

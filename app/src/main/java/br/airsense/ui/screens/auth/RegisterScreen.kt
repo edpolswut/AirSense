@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -28,11 +29,16 @@ import br.airsense.util.UserValidator
 @Composable
 fun RegisterScreen(
     onNavigateToLogin: () -> Unit,
+    onRegistered: (email: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: RegisterViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(state.registeredEmail) {
+        state.registeredEmail?.let(onRegistered)
+    }
 
     AuthLayout(
         title = "Criar conta",
@@ -72,7 +78,7 @@ fun RegisterScreen(
             onValueChange = viewModel::onPasswordChange,
             label = "Senha",
             error = state.passwordError,
-            hint = "Mínimo de ${UserValidator.MIN_PASSWORD_LENGTH} caracteres, com letras e números"
+            hint = UserValidator.PASSWORD_RULE
         )
 
         PasswordTextField(

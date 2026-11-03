@@ -31,7 +31,10 @@ data class User(
     val passwordHash: String,
     val salt: String,
     val updatedAt: Long = System.currentTimeMillis(),
-    val syncState: Int = SyncState.PENDING.code
+    val syncState: Int = SyncState.PENDING.code,
+    // US007: senhas erradas seguidas e fim do bloqueio temporário (0 = sem bloqueio).
+    val failedLoginAttempts: Int = 0,
+    val lockedUntil: Long = 0
 ) {
     val sync: SyncState
         get() = SyncState.fromCode(syncState)

@@ -1,13 +1,14 @@
 package br.airsense.ui.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import br.airsense.data.repository.AirQualityRepository
 import br.airsense.data.repository.AirSenseDeviceRepository
 import br.airsense.data.repository.EnvironmentRepository
 import br.airsense.data.session.SessionManager
-import br.airsense.model.AirSenseDevice
 import br.airsense.model.Environment
-import br.airsense.model.EnvironmentRoom
+import br.airsense.util.AirQualitySnapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,34 +29,47 @@ data class EnvironmentDialogState(
     val envName: String = "",
     val envDescription: String = "",
     val envNameError: String? = null,
-
-    val isRoomDialogOpen: Boolean = false,
-    val targetEnvironmentForRoom: Environment? = null,
-    val editingRoom: EnvironmentRoom? = null,
-    val roomName: String = "",
-    val roomDescription: String = "",
-    val roomNameError: String? = null,
-
-    val isAllocateDevicesDialogOpen: Boolean = false,
-    val targetEnvironmentForDevices: Environment? = null,
+    /** Ambiente aguardando confirmação de exclusão (US002 cenário 3). */
+    val environmentToDelete: Environment? = null,
     val toastMessage: String? = null
 )
 
-data class EnvironmentUiState(
-    val environments: List<Environment> = emptyList(),
-    val roomsByEnvironment: Map<Int, List<EnvironmentRoom>> = emptyMap(),
-    val devices: List<AirSenseDevice> = emptyList(),
-    val dialog: EnvironmentDialogState = EnvironmentDialogState()
+data class EnvironmentListItem(
+    val environment: Environment,
+    val roomsCount: Int,
+    val devicesCount: Int,
+    val snapshot: AirQualitySnapshot
 )
 
+data class EnvironmentUiState(
+    val isLoading: Boolean = true,
+    val environments: List<EnvironmentListItem> = emptyList(),
+    val dialog: EnvironmentDialogState = EnvironmentDialogState()
+) {
+    /** Quantos cômodos o ambiente em exclusão tem, para o aviso. */
+    val roomsOfEnvironmentToDelete: Int
+        get() = environments.firstOrNull { it.environment.id == dialog.environmentToDelete?.id }?.roomsCount ?: 0
+}
+
+/** Tela macro de ambientes: lista, cadastro, edição e exclusão (US002). */
 @HiltViewModel
 class EnvironmentViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val environmentRepository: EnvironmentRepository,
-    private val deviceRepository: AirSenseDeviceRepository,
+    deviceRepository: AirSenseDeviceRepository,
+    airQualityRepository: AirQualityRepository,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _dialogState = MutableStateFlow(EnvironmentDialogState())
+
+    init {
+        // Vindo do botão "Cadastrar ambiente" da Home: abre o formulário uma única vez.
+        if (savedStateHandle.get<Boolean>("create") == true) {
+            savedStateHandle["create"] = false
+            onOpenCreateEnvironment()
+        }
+    }
 
     private val _currentUserId = sessionManager.userIdFlow.stateIn(
         scope = viewModelScope,
@@ -63,42 +78,34 @@ class EnvironmentViewModel @Inject constructor(
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val _environments: Flow<List<Environment>> = sessionManager.userIdFlow.flatMapLatest { userId ->
-        if (!userId.isNullOrBlank()) {
-            environmentRepository.getEnvironmentsForUser(userId)
-        } else {
-            environmentRepository.getAllEnvironments()
+    private fun <T> forUser(query: (String) -> Flow<List<T>>): Flow<List<T>> =
+        sessionManager.userIdFlow.flatMapLatest { id -> if (id.isNullOrBlank()) flowOf(emptyList()) else query(id) }
+
+    private val _items: Flow<List<EnvironmentListItem>> = combine(
+        forUser(environmentRepository::getEnvironmentsForUser),
+        forUser(environmentRepository::getRoomsForUser),
+        forUser(deviceRepository::getDevicesForUser),
+        forUser(airQualityRepository::getReadingsForUser)
+    ) { environments, rooms, devices, readings ->
+        val latest = AirQualitySnapshot.latestByDevice(readings)
+        environments.map { env ->
+            val envDevices = devices.filter { it.environmentId == env.id }
+            EnvironmentListItem(
+                environment = env,
+                roomsCount = rooms.count { it.environmentId == env.id },
+                devicesCount = envDevices.size,
+                snapshot = AirQualitySnapshot.of(envDevices, latest)
+            )
         }
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val _devices: Flow<List<AirSenseDevice>> = sessionManager.userIdFlow.flatMapLatest { userId ->
-        if (!userId.isNullOrBlank()) {
-            deviceRepository.getDevicesForUser(userId)
-        } else {
-            deviceRepository.getDevices()
-        }
-    }
-
-    val uiState: StateFlow<EnvironmentUiState> = combine(
-        _environments,
-        environmentRepository.getAllRooms(),
-        _devices,
-        _dialogState
-    ) { environments, allRooms, devices, dialog ->
-        EnvironmentUiState(
-            environments = environments,
-            roomsByEnvironment = allRooms.groupBy { it.environmentId },
-            devices = devices,
-            dialog = dialog
-        )
+    val uiState: StateFlow<EnvironmentUiState> = combine(_items, _dialogState) { items, dialog ->
+        EnvironmentUiState(isLoading = false, environments = items, dialog = dialog)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = EnvironmentUiState()
     )
-
-    // ---------- Ambiente (US002 + US011) ----------
 
     fun onOpenCreateEnvironment() {
         _dialogState.update {
@@ -135,11 +142,12 @@ class EnvironmentViewModel @Inject constructor(
     fun onSaveEnvironment() {
         val state = _dialogState.value
         val trimmedName = state.envName.trim()
-        val userId = _currentUserId.value.orEmpty()
+        val userId = _currentUserId.value
+        if (userId.isNullOrBlank()) return
 
         when {
             trimmedName.isEmpty() -> {
-                _dialogState.update { it.copy(envNameError = "Informe o nome do ambiente") }
+                _dialogState.update { it.copy(envNameError = "O nome do ambiente é obrigatório") }
                 return
             }
             trimmedName.length < 2 -> {
@@ -175,128 +183,23 @@ class EnvironmentViewModel @Inject constructor(
         }
     }
 
-    fun onDeleteEnvironment(environment: Environment) {
+    /** Primeiro pede confirmação; a exclusão só acontece em [onConfirmDeleteEnvironment]. */
+    fun onRequestDeleteEnvironment(environment: Environment) {
+        _dialogState.update { it.copy(environmentToDelete = environment) }
+    }
+
+    fun onConfirmDeleteEnvironment() {
+        val environment = _dialogState.value.environmentToDelete ?: return
+        _dialogState.update { it.copy(environmentToDelete = null) }
         viewModelScope.launch {
             environmentRepository.deleteEnvironment(environment)
             _dialogState.update { it.copy(toastMessage = "Ambiente removido") }
         }
     }
 
-    // ---------- Cômodo (US003 + US011) ----------
-
-    fun onOpenCreateRoom(environment: Environment) {
-        _dialogState.update {
-            it.copy(
-                isRoomDialogOpen = true,
-                targetEnvironmentForRoom = environment,
-                editingRoom = null,
-                roomName = "",
-                roomDescription = "",
-                roomNameError = null
-            )
-        }
-    }
-
-    fun onOpenEditRoom(environment: Environment, room: EnvironmentRoom) {
-        _dialogState.update {
-            it.copy(
-                isRoomDialogOpen = true,
-                targetEnvironmentForRoom = environment,
-                editingRoom = room,
-                roomName = room.name,
-                roomDescription = room.description,
-                roomNameError = null
-            )
-        }
-    }
-
-    fun onRoomNameChange(value: String) {
-        _dialogState.update { it.copy(roomName = value, roomNameError = null) }
-    }
-
-    fun onRoomDescriptionChange(value: String) {
-        _dialogState.update { it.copy(roomDescription = value) }
-    }
-
-    fun onSaveRoom() {
-        val state = _dialogState.value
-        val targetEnv = state.targetEnvironmentForRoom ?: return
-        val trimmedName = state.roomName.trim()
-
-        if (trimmedName.isEmpty()) {
-            _dialogState.update { it.copy(roomNameError = "Informe o nome do cômodo") }
-            return
-        }
-
-        viewModelScope.launch {
-            val existing = environmentRepository.findRoomByName(targetEnv.id, trimmedName)
-            val editing = state.editingRoom
-            if (existing != null && existing.id != editing?.id) {
-                _dialogState.update {
-                    it.copy(roomNameError = "Já existe um cômodo com este nome em ${targetEnv.name}")
-                }
-                return@launch
-            }
-
-            val roomToSave = EnvironmentRoom(
-                id = editing?.id ?: 0,
-                environmentId = targetEnv.id,
-                name = trimmedName,
-                description = state.roomDescription.trim()
-            )
-            environmentRepository.saveRoom(roomToSave)
-            _dialogState.update {
-                it.copy(
-                    isRoomDialogOpen = false,
-                    editingRoom = null,
-                    targetEnvironmentForRoom = null,
-                    toastMessage = if (editing == null) "Cômodo adicionado" else "Cômodo atualizado"
-                )
-            }
-        }
-    }
-
-    fun onDeleteRoom(room: EnvironmentRoom) {
-        viewModelScope.launch {
-            environmentRepository.deleteRoom(room)
-            _dialogState.update { it.copy(toastMessage = "Cômodo removido") }
-        }
-    }
-
-    // ---------- Alocação de Dispositivos (US008) ----------
-
-    fun onOpenAllocateDevices(environment: Environment) {
-        _dialogState.update {
-            it.copy(
-                isAllocateDevicesDialogOpen = true,
-                targetEnvironmentForDevices = environment
-            )
-        }
-    }
-
-    fun onToggleDeviceInEnvironment(device: AirSenseDevice, environment: Environment, roomId: Int? = null) {
-        viewModelScope.launch {
-            val isAlreadyInEnvironment = device.environmentId == environment.id
-            val updated = if (isAlreadyInEnvironment && roomId == null) {
-                device.copy(environmentId = null, roomId = null)
-            } else {
-                device.copy(environmentId = environment.id, roomId = roomId)
-            }
-            deviceRepository.saveDevice(updated)
-        }
-    }
-
     fun onDismissDialogs() {
         _dialogState.update {
-            it.copy(
-                isEnvironmentDialogOpen = false,
-                editingEnvironment = null,
-                isRoomDialogOpen = false,
-                editingRoom = null,
-                targetEnvironmentForRoom = null,
-                isAllocateDevicesDialogOpen = false,
-                targetEnvironmentForDevices = null
-            )
+            it.copy(isEnvironmentDialogOpen = false, editingEnvironment = null, environmentToDelete = null)
         }
     }
 

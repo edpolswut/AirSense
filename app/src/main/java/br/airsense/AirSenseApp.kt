@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
@@ -20,6 +23,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.House
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,11 +53,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import br.airsense.ui.screens.devices.AirSenseDeviceScreen
+import br.airsense.ui.screens.EnvironmentDetailScreen
 import br.airsense.ui.screens.EnvironmentScreen
+import br.airsense.ui.screens.RoomDetailScreen
 import br.airsense.ui.screens.HomeScreen
 import br.airsense.ui.screens.ReportScreen
 import br.airsense.ui.screens.UserScreen
@@ -70,10 +80,14 @@ fun AirSenseApp(
     val navController = rememberNavController()
     val entradaAtual by navController.currentBackStackEntryAsState()
     val rotaAtual = entradaAtual?.destination?.route
+    // Telas de detalhe (ambiente e cômodo) mostram "voltar" e mantêm a aba Ambientes marcada.
+    val isDetailRoute = rotaAtual == "Environment/{environmentId}" || rotaAtual == "Room/{roomId}"
+    val isEnvironmentTab = rotaAtual?.startsWith("Environment") == true || rotaAtual == "Room/{roomId}"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showConfigDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -121,6 +135,7 @@ fun AirSenseApp(
                     selected = false,
                     onClick = {
                         scope.launch { drawerState.close() }
+                        showAboutDialog = true
                     },
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -143,8 +158,14 @@ fun AirSenseApp(
                 TopAppBar(
                     title = { Text("AirSense") },
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Abrir menu")
+                        if (isDetailRoute) {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
+                            }
+                        } else {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Abrir menu")
+                            }
                         }
                     }
                 )
@@ -153,7 +174,7 @@ fun AirSenseApp(
                 NavigationBar {
                     NavigationBarItem(
                         selected = rotaAtual == "Home",
-                        onClick = { navController.navigate("Home") { launchSingleTop = true } },
+                        onClick = { navController.navigateToTab("Home") },
                         icon = {
                             Icon(
                                 imageVector = Icons.Outlined.Home,
@@ -165,7 +186,7 @@ fun AirSenseApp(
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "AirSenseDevices",
-                        onClick = { navController.navigate("AirSenseDevices") { launchSingleTop = true } },
+                        onClick = { navController.navigateToTab("AirSenseDevices") },
                         icon = {
                             Icon(
                                 imageVector = Icons.Outlined.Devices,
@@ -176,8 +197,8 @@ fun AirSenseApp(
                         //label = { Text("Dispositivos") }
                     )
                     NavigationBarItem(
-                        selected = rotaAtual == "Environment",
-                        onClick = { navController.navigate("Environment") { launchSingleTop = true } },
+                        selected = isEnvironmentTab,
+                        onClick = { navController.navigateToTab("Environment") },
                         icon = {
                             Icon(
                                 imageVector = Icons.Outlined.House,
@@ -189,7 +210,7 @@ fun AirSenseApp(
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "Report",
-                        onClick = { navController.navigate("Report") { launchSingleTop = true } },
+                        onClick = { navController.navigateToTab("Report") },
                         icon = {
                             Icon(
                                 imageVector = Icons.Outlined.BarChart,
@@ -201,7 +222,7 @@ fun AirSenseApp(
                     )
                     NavigationBarItem(
                         selected = rotaAtual == "User",
-                        onClick = { navController.navigate("User") { launchSingleTop = true } },
+                        onClick = { navController.navigateToTab("User") },
                         icon = {
                             Icon(
                                 imageVector = Icons.Outlined.Person,
@@ -219,13 +240,41 @@ fun AirSenseApp(
                 startDestination = "Home",
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable("Home") { HomeScreen() }
+                composable("Home") {
+                    HomeScreen(
+                        onOpenEnvironment = { id -> navController.navigate("Environment/$id") },
+                        onCreateEnvironment = {
+                            navController.navigate("Environment?create=true") { launchSingleTop = true }
+                        }
+                    )
+                }
                 composable("AirSenseDevices") { AirSenseDeviceScreen() }
-                composable("Environment") { EnvironmentScreen() }
+                composable(
+                    route = "Environment?create={create}",
+                    arguments = listOf(navArgument("create") { type = NavType.BoolType; defaultValue = false })
+                ) {
+                    EnvironmentScreen(onOpenEnvironment = { id -> navController.navigate("Environment/$id") })
+                }
+                composable(
+                    route = "Environment/{environmentId}",
+                    arguments = listOf(navArgument("environmentId") { type = NavType.IntType })
+                ) {
+                    EnvironmentDetailScreen(onOpenRoom = { id -> navController.navigate("Room/$id") })
+                }
+                composable(
+                    route = "Room/{roomId}",
+                    arguments = listOf(navArgument("roomId") { type = NavType.IntType })
+                ) {
+                    RoomDetailScreen(onDeleted = { navController.popBackStack() })
+                }
                 composable("Report") { ReportScreen() }
                 composable("User") { UserScreen() }
             }
         }
+    }
+
+    if (showAboutDialog) {
+        AboutDialog(onDismiss = { showAboutDialog = false })
     }
 
     if (showConfigDialog) {
@@ -235,6 +284,52 @@ fun AirSenseApp(
             onDismiss = { showConfigDialog = false }
         )
     }
+}
+
+private val TEAM_MEMBERS = listOf(
+    "Davi Cagnato Pinto",
+    "Edgar Felipe Polswut",
+    "Larissa Prescendo Gonçalves Adames",
+    "Leonardo Siqueira Hanke",
+    "Luis Felipe de Souza Quintiliano da Silva",
+    "Nicolas Jacinto Grzebieniak de Oliveira"
+)
+
+/** "Informações" do menu: o que é o app, como as cores funcionam e a versão. */
+@Composable
+fun AboutDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "-"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { br.airsense.ui.components.AirSenseLogo(modifier = Modifier.width(96.dp)) },
+        title = { Text("Sobre o AirSense") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Monitoramento da qualidade do ar em ambientes e cômodos, com sensores de temperatura, umidade, AQI e CO2.")
+                Text(
+                    "Criado para a Disciplina \"Mobile Development: Android\""
+                )
+                Text(
+                    text = "Equipe",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                TEAM_MEMBERS.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                Text(
+                    text = "Versão $version • Modo offline (dados salvos neste aparelho)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } }
+    )
 }
 
 @Composable
@@ -332,4 +427,12 @@ fun ThemeConfigDialog(
             }
         }
     )
+}
+
+/** Troca de aba sem empilhar telas: limpa o histórico até a Home e abre a raiz da aba. */
+private fun NavHostController.navigateToTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id)
+        launchSingleTop = true
+    }
 }

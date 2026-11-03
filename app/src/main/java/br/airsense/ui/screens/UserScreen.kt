@@ -217,7 +217,8 @@ private fun ChangePasswordDialog(
                     value = state.newPassword,
                     onValueChange = onNewPasswordChange,
                     label = "Nova senha",
-                    error = state.newPasswordError
+                    error = state.newPasswordError,
+                    hint = br.airsense.util.UserValidator.PASSWORD_RULE
                 )
                 PasswordTextField(
                     value = state.confirmPassword,

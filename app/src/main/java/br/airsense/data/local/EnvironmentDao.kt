@@ -24,8 +24,11 @@ interface EnvironmentDao {
     @Query("SELECT * FROM environment WHERE userId = :userId ORDER BY id ASC")
     fun listarAmbientesPorUsuario(userId: String): Flow<List<Environment>>
 
-    @Query("SELECT * FROM environment ORDER BY id ASC")
-    fun listarTodosAmbientes(): Flow<List<Environment>>
+    @Query("SELECT * FROM environment WHERE id = :id LIMIT 1")
+    fun observarAmbiente(id: Int): Flow<Environment?>
+
+    @Query("SELECT * FROM room WHERE id = :id LIMIT 1")
+    fun observarComodo(id: Int): Flow<EnvironmentRoom?>
 
     @Query("SELECT * FROM environment WHERE userId = :userId AND LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun buscarAmbientePorNome(userId: String, name: String): Environment?
@@ -42,8 +45,15 @@ interface EnvironmentDao {
     @Query("SELECT * FROM room WHERE environmentId = :environmentId ORDER BY id ASC")
     fun listarComodosPorAmbiente(environmentId: Int): Flow<List<EnvironmentRoom>>
 
-    @Query("SELECT * FROM room ORDER BY id ASC")
-    fun listarTodosComodos(): Flow<List<EnvironmentRoom>>
+    @Query(
+        """
+        SELECT room.* FROM room
+        INNER JOIN environment e ON e.id = room.environmentId
+        WHERE e.userId = :userId
+        ORDER BY room.id ASC
+        """
+    )
+    fun listarComodosPorUsuario(userId: String): Flow<List<EnvironmentRoom>>
 
     @Query("SELECT * FROM room WHERE environmentId = :environmentId AND LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun buscarComodoPorNome(environmentId: Int, name: String): EnvironmentRoom?

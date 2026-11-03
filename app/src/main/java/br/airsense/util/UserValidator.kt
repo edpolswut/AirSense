@@ -18,11 +18,17 @@ object UserValidator {
         }
     }
 
+    const val PASSWORD_RULE =
+        "Mínimo de $MIN_PASSWORD_LENGTH caracteres, com maiúscula, minúscula, número e caractere especial"
+
+    // US001: mínimo de 8 caracteres, com maiúscula, minúscula, número e caractere especial.
     fun password(value: String): String? = when {
         value.length < MIN_PASSWORD_LENGTH ->
             "A senha deve ter no mínimo $MIN_PASSWORD_LENGTH caracteres"
-        value.none { it.isLetter() } || value.none { it.isDigit() } ->
-            "A senha deve conter letras e números"
+        value.none { it.isUpperCase() } -> "A senha deve ter pelo menos uma letra maiúscula"
+        value.none { it.isLowerCase() } -> "A senha deve ter pelo menos uma letra minúscula"
+        value.none { it.isDigit() } -> "A senha deve ter pelo menos um número"
+        value.all { it.isLetterOrDigit() } -> "A senha deve ter pelo menos um caractere especial (ex.: @, #, !)"
         else -> null
     }
 

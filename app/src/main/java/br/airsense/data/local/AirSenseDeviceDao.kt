@@ -14,14 +14,15 @@ interface AirSenseDeviceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun inserir(device: AirSenseDevice)
 
-    @Query("SELECT * FROM device ORDER BY id ASC")
-    fun listar(): Flow<List<AirSenseDevice>>
-
     @Query("SELECT * FROM device WHERE userId = :userId ORDER BY id ASC")
     fun listarPorUsuario(userId: String): Flow<List<AirSenseDevice>>
 
-    @Query("SELECT * FROM device WHERE userId = :userId AND LOWER(deviceId) = LOWER(:deviceId) LIMIT 1")
-    suspend fun buscarPorDeviceId(userId: String, deviceId: String): AirSenseDevice?
+    // O identificador é único no aparelho inteiro (igual ao backend): as leituras se ligam a ele.
+    @Query("SELECT * FROM device WHERE LOWER(deviceId) = LOWER(:deviceId) LIMIT 1")
+    suspend fun buscarPorDeviceId(deviceId: String): AirSenseDevice?
+
+    @Query("SELECT * FROM device WHERE id = :id LIMIT 1")
+    suspend fun buscarPorId(id: Int): AirSenseDevice?
 
     @Query("UPDATE device SET environmentId = NULL, roomId = NULL WHERE environmentId = :environmentId")
     suspend fun desvincularAmbiente(environmentId: Int)

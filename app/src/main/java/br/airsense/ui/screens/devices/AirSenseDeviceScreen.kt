@@ -10,7 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -19,6 +23,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import br.airsense.model.AirSenseDevice
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +46,8 @@ fun AirSenseDeviceScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    // Dispositivo aguardando confirmação de exclusão (apaga também as leituras dele).
+    var deviceToDelete by remember { mutableStateOf<AirSenseDevice?>(null) }
 
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { msg ->
@@ -96,7 +106,7 @@ fun AirSenseDeviceScreen(
                 environments = uiState.environments,
                 rooms = uiState.rooms,
                 onEditDevice = viewModel::onOpenEditDevice,
-                onDeleteDevice = viewModel::onDeleteDevice,
+                onDeleteDevice = { deviceToDelete = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -121,7 +131,29 @@ fun AirSenseDeviceScreen(
             onFormChange = viewModel::onFormChange,
             onGenerateRandomDeviceId = viewModel::onGenerateRandomDeviceId,
             onClose = viewModel::onCloseFullScreenPopup,
-            onSave = viewModel::onSaveDevice
+            onSave = viewModel::onSaveDevice,
+            // Só para dispositivo já salvo. No modo online esta opção não vai existir (D09).
+            canGenerateHistory = uiState.deviceBeingEdited != null,
+            isGeneratingHistory = uiState.isGeneratingHistory,
+            onGenerateHistory = viewModel::onGenerateHistory
+        )
+    }
+
+    deviceToDelete?.let { device ->
+        AlertDialog(
+            onDismissRequest = { deviceToDelete = null },
+            title = { Text("Excluir \"${device.name}\"?") },
+            text = { Text("O dispositivo e todo o histórico de leituras dele serão apagados.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.onDeleteDevice(device)
+                        deviceToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Excluir") }
+            },
+            dismissButton = { TextButton(onClick = { deviceToDelete = null }) { Text("Cancelar") } }
         )
     }
 }

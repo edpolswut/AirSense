@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -27,10 +28,19 @@ import br.airsense.ui.viewmodel.LoginViewModel
 fun LoginScreen(
     onNavigateToRegister: () -> Unit,
     modifier: Modifier = Modifier,
+    registeredEmail: String? = null,
+    onRegisteredEmailShown: () -> Unit = {},
     viewModel: LoginViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(registeredEmail) {
+        if (registeredEmail != null) {
+            viewModel.onRegistered(registeredEmail)
+            onRegisteredEmailShown()
+        }
+    }
 
     AuthLayout(
         title = "Entrar",
@@ -62,6 +72,14 @@ fun LoginScreen(
                 viewModel.onLogin()
             }
         )
+
+        state.infoMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
 
         state.errorMessage?.let { message ->
             Text(

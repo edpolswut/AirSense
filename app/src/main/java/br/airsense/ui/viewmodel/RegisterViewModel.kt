@@ -25,13 +25,15 @@ data class RegisterUiState(
     val passwordError: String? = null,
     val confirmPasswordError: String? = null,
     val errorMessage: String? = null,
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    /** Preenchido quando o cadastro deu certo; a tela volta para o login com este e-mail. */
+    val registeredEmail: String? = null
 )
 
 @HiltViewModel
 class RegisterViewModel @Inject constructor(
     private val repository: UserRepository,
-    private val sessionManager: SessionManager
+    @Suppress("unused") private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterUiState())
@@ -78,8 +80,8 @@ class RegisterViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             when (val result = repository.register(state.name, state.email, state.password)) {
-                // Cadastro concluído já inicia a sessão e entra no app.
-                is AuthResult.Success -> sessionManager.saveSession(result.data.id)
+                // US001: cadastro concluído leva para a tela de login.
+                is AuthResult.Success -> _uiState.update { it.copy(registeredEmail = result.data.email) }
                 is AuthResult.Failure -> _uiState.update {
                     if (result.error == AuthError.EMAIL_ALREADY_EXISTS) {
                         it.copy(emailError = result.error.message)

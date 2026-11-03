@@ -2,7 +2,9 @@ package br.airsense.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import br.airsense.data.repository.AirQualityRepository
 import br.airsense.data.repository.AirSenseDeviceRepository
+import br.airsense.util.ReadingHistoryGenerator
 import br.airsense.data.repository.EnvironmentRepository
 import br.airsense.data.session.SessionManager
 import br.airsense.model.AirSenseDevice
@@ -12,6 +14,7 @@ import br.airsense.model.EnvironmentRoom
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +71,7 @@ data class UiOverlayState(
     val isFullScreenPopupOpen: Boolean = false,
     val deviceBeingEdited: AirSenseDevice? = null,
     val form: FormState = FormState(),
+    val isGeneratingHistory: Boolean = false,
     val toastMessage: String? = null
 )
 
@@ -81,6 +85,7 @@ data class AirSenseDeviceUiState(
     val isFullScreenPopupOpen: Boolean = false,
     val deviceBeingEdited: AirSenseDevice? = null,
     val form: FormState = FormState(),
+    val isGeneratingHistory: Boolean = false,
     val toastMessage: String? = null
 )
 
@@ -88,6 +93,7 @@ data class AirSenseDeviceUiState(
 class AirSenseDeviceViewModel @Inject constructor(
     private val repository: AirSenseDeviceRepository,
     private val environmentRepository: EnvironmentRepository,
+    private val airQualityRepository: AirQualityRepository,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
@@ -103,20 +109,17 @@ class AirSenseDeviceViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val _userDevices: Flow<List<AirSenseDevice>> = sessionManager.userIdFlow.flatMapLatest { userId ->
-        if (!userId.isNullOrBlank()) {
-            repository.getDevicesForUser(userId)
-        } else {
-            repository.getDevices()
-        }
+        if (userId.isNullOrBlank()) flowOf(emptyList()) else repository.getDevicesForUser(userId)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val _userEnvironments: Flow<List<Environment>> = sessionManager.userIdFlow.flatMapLatest { userId ->
-        if (!userId.isNullOrBlank()) {
-            environmentRepository.getEnvironmentsForUser(userId)
-        } else {
-            environmentRepository.getAllEnvironments()
-        }
+        if (userId.isNullOrBlank()) flowOf(emptyList()) else environmentRepository.getEnvironmentsForUser(userId)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val _userRooms: Flow<List<EnvironmentRoom>> = sessionManager.userIdFlow.flatMapLatest { userId ->
+        if (userId.isNullOrBlank()) flowOf(emptyList()) else environmentRepository.getRoomsForUser(userId)
     }
 
     private val _filteredDevices: Flow<List<AirSenseDevice>> = combine(
@@ -143,7 +146,7 @@ class AirSenseDeviceViewModel @Inject constructor(
     val uiState: StateFlow<AirSenseDeviceUiState> = combine(
         _filteredDevices,
         _userEnvironments,
-        environmentRepository.getAllRooms(),
+        _userRooms,
         _statusFilter,
         combine(_sortOption, _overlayState) { s, o -> s to o }
     ) { devices, environments, rooms, filter, (sort, overlay) ->
@@ -157,6 +160,7 @@ class AirSenseDeviceViewModel @Inject constructor(
             isFullScreenPopupOpen = overlay.isFullScreenPopupOpen,
             deviceBeingEdited = overlay.deviceBeingEdited,
             form = overlay.form,
+            isGeneratingHistory = overlay.isGeneratingHistory,
             toastMessage = overlay.toastMessage
         )
     }.stateIn(
@@ -256,7 +260,8 @@ class AirSenseDeviceViewModel @Inject constructor(
         val form = _overlayState.value.form
         val name = form.name.trim()
         val editing = _overlayState.value.deviceBeingEdited
-        val currentUserId = _currentUserId.value ?: ""
+        val currentUserId = _currentUserId.value
+        if (currentUserId.isNullOrBlank()) return
 
         if (name.isEmpty()) {
             _overlayState.update {
@@ -268,10 +273,10 @@ class AirSenseDeviceViewModel @Inject constructor(
         val finalDeviceId = form.deviceId.trim().ifBlank { generateRandomDeviceId() }
 
         viewModelScope.launch {
-            val existing = repository.findByDeviceId(currentUserId, finalDeviceId)
+            val existing = repository.findByDeviceId(finalDeviceId)
             if (existing != null && existing.id != editing?.id) {
                 _overlayState.update {
-                    it.copy(form = it.form.copy(deviceIdError = "Este ID de dispositivo já está cadastrado"))
+                    it.copy(form = it.form.copy(deviceIdError = "Dispositivo já cadastrado."))
                 }
                 return@launch
             }
@@ -296,6 +301,25 @@ class AirSenseDeviceViewModel @Inject constructor(
 
             repository.saveDevice(deviceToSave)
             onCloseFullScreenPopup()
+        }
+    }
+
+    /**
+     * Gera leituras de demonstração dos últimos 7 dias para o dispositivo em edição (só offline).
+     * Usa os dados já salvos do dispositivo, não o que está digitado no formulário.
+     */
+    fun onGenerateHistory() {
+        val device = _overlayState.value.deviceBeingEdited ?: return
+        if (_overlayState.value.isGeneratingHistory) return
+        _overlayState.update { it.copy(isGeneratingHistory = true) }
+        viewModelScope.launch {
+            val created = airQualityRepository.generateHistory(device, ReadingHistoryGenerator.DEFAULT_DAYS)
+            val message = if (created == 0) {
+                "Os últimos ${ReadingHistoryGenerator.DEFAULT_DAYS} dias de ${device.name} já têm leituras."
+            } else {
+                "$created leituras geradas para ${device.name}."
+            }
+            _overlayState.update { it.copy(isGeneratingHistory = false, toastMessage = message) }
         }
     }
 
