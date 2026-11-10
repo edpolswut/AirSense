@@ -181,13 +181,45 @@ class AirSenseDeviceViewModel @Inject constructor(
         _overlayState.update { it.copy(isAddOptionsModalOpen = false) }
     }
 
-    fun onSelectQrCodeOption() {
-        _overlayState.update {
-            it.copy(
-                isAddOptionsModalOpen = false,
-                toastMessage = "Funcionalidade de QR Code em desenvolvimento."
-            )
+    fun onQrCodeScanned(scannedCode: String) {
+        val extractedCode = extractCodeFromQr(scannedCode)
+        if (extractedCode.length == 6) {
+            _overlayState.update {
+                it.copy(
+                    isAddOptionsModalOpen = false,
+                    deviceBeingEdited = null,
+                    form = FormState.default(randomDeviceId = extractedCode),
+                    isFullScreenPopupOpen = true,
+                    toastMessage = "Código QR lido com sucesso!"
+                )
+            }
+        } else {
+            _overlayState.update {
+                it.copy(
+                    isAddOptionsModalOpen = false,
+                    toastMessage = "Código QR inválido. O ID deve ter exatamente 6 caracteres."
+                )
+            }
         }
+    }
+
+    private fun extractCodeFromQr(rawInput: String): String {
+        val cleaned = rawInput.trim().replace("\r", "").replace("\n", "")
+        if (cleaned.startsWith("http://", ignoreCase = true) ||
+            cleaned.startsWith("https://", ignoreCase = true) ||
+            cleaned.contains("/")
+        ) {
+            val uri = runCatching { android.net.Uri.parse(cleaned) }.getOrNull()
+            val queryId = uri?.getQueryParameter("id") ?: uri?.getQueryParameter("code")
+            if (!queryId.isNullOrBlank()) {
+                return queryId.trim()
+            }
+            val lastSegment = uri?.lastPathSegment
+            if (!lastSegment.isNullOrBlank()) {
+                return lastSegment.trim()
+            }
+        }
+        return cleaned
     }
 
     fun onOpenManualRegister() {
